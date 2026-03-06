@@ -12,10 +12,8 @@
   <style>
     :root {
       --bg: #020617;
-      --bg-soft: #0b1225;
       --card: rgba(12, 20, 40, 0.65);
       --text: #f8fafc;
-      --muted: #a6b1c9;
       --line: rgba(255, 255, 255, 0.08);
       --accent: #3b82f6;
       --accent-2: #22d3ee;
@@ -37,8 +35,8 @@
     .hero {
       min-height: 100svh;
       background:
-        linear-gradient(180deg, rgba(2, 6, 23, 0.25) 0%, rgba(2, 6, 23, 0.92) 85%),
-        url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2200&q=80') center/cover no-repeat;
+        linear-gradient(180deg, rgba(2, 6, 23, 0.3) 0%, rgba(2, 6, 23, 0.92) 88%),
+        url('https://avatars.mds.yandex.net/i?id=ccfa8e7f718d7f62f9e8b52c4e4fb29f_l-16326555-images-thumbs&n=13') center 30% / cover no-repeat;
       position: relative;
       isolation: isolate;
     }
@@ -48,11 +46,11 @@
       position: absolute;
       inset: 0;
       z-index: -1;
-      background: radial-gradient(circle at center 20%, transparent 0 20%, rgba(2, 6, 23, 0.85) 80%);
+      background: radial-gradient(circle at center 20%, transparent 0 25%, rgba(2, 6, 23, 0.82) 85%);
     }
 
     .glass-nav {
-      background: rgba(4, 10, 24, 0.7);
+      background: rgba(4, 10, 24, 0.72);
       backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--line);
     }
@@ -110,16 +108,27 @@
       transform: translateY(-2px);
     }
 
-    .reveal {
-      opacity: 0;
-      transform: translateY(26px);
-      transition: opacity .8s ease, transform .8s ease;
+    .email-input {
+      width: 100%;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(2, 6, 23, 0.65);
+      color: #e2e8f0;
+      padding: 0.95rem 1rem;
+      border-radius: 9999px;
+      outline: none;
+      transition: border-color .2s ease, box-shadow .2s ease;
     }
 
-    .reveal.active {
-      opacity: 1;
-      transform: translateY(0);
+    .email-input:focus {
+      border-color: rgba(56, 189, 248, 0.9);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
     }
+
+    .reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s ease, transform .8s ease; }
+    .reveal.active { opacity: 1; transform: translateY(0); }
+
+    .status-ok { color: #22c55e; }
+    .status-err { color: #f87171; }
 
     details summary::-webkit-details-marker { display: none; }
     details[open] svg { transform: rotate(180deg); }
@@ -216,6 +225,18 @@
     </div>
   </section>
 
+  <section class="py-20 px-6">
+    <div class="max-w-3xl mx-auto card rounded-3xl p-8 reveal">
+      <h2 class="text-2xl md:text-3xl font-bold mb-3">Подписка на релизы</h2>
+      <p class="text-slate-300 mb-6">Оставьте только реальную почту. Мы автоматически отсекаем мусорные адреса и дубликаты.</p>
+      <form id="email-form" class="flex flex-col sm:flex-row gap-3" novalidate>
+        <input id="email-input" type="email" placeholder="your@email.com" class="email-input" autocomplete="email" required />
+        <button type="submit" class="btn-main rounded-full px-7 py-4 text-xs font-bold uppercase tracking-[0.2em]">Подписаться</button>
+      </form>
+      <p id="email-status" class="mt-3 text-sm text-slate-400"></p>
+    </div>
+  </section>
+
   <section id="faq" class="py-28 px-6">
     <div class="max-w-3xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-10 reveal">Частые вопросы</h2>
@@ -268,6 +289,75 @@
 
     window.addEventListener('scroll', revealOnScroll, { passive: true });
     revealOnScroll();
+
+    const emailForm = document.getElementById('email-form');
+    const emailInput = document.getElementById('email-input');
+    const emailStatus = document.getElementById('email-status');
+
+    const disposableDomains = new Set([
+      'mailinator.com', 'tempmail.com', '10minutemail.com', 'guerrillamail.com',
+      'trashmail.com', 'yopmail.com', 'sharklasers.com', 'fakeinbox.com', 'tempmailo.com'
+    ]);
+
+    const blockedLocalParts = new Set([
+      'test', 'test123', 'qwe', 'asd', 'admin', 'demo', 'user', 'mail', 'example', 'example123'
+    ]);
+
+    const readStored = () => {
+      try {
+        const raw = localStorage.getItem('ddv_subscribed_emails');
+        const arr = raw ? JSON.parse(raw) : [];
+        return new Set(Array.isArray(arr) ? arr : []);
+      } catch {
+        return new Set();
+      }
+    };
+
+    const saveStored = (set) => localStorage.setItem('ddv_subscribed_emails', JSON.stringify([...set]));
+
+    const hasRepeatedChars = (str) => /(.)\1{5,}/.test(str);
+
+    const isLikelyRealEmail = (email) => {
+      const normalized = email.trim().toLowerCase();
+      const basicPattern = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+      if (!basicPattern.test(normalized)) return { ok: false, reason: 'Неверный формат email.' };
+
+      const [local, domain] = normalized.split('@');
+      if (!local || !domain) return { ok: false, reason: 'Email должен содержать @ и домен.' };
+      if (local.length < 2 || local.length > 64) return { ok: false, reason: 'Некорректная длина имени почты.' };
+      if (domain.length < 4 || domain.length > 255) return { ok: false, reason: 'Некорректная длина домена.' };
+      if (disposableDomains.has(domain)) return { ok: false, reason: 'Временные/одноразовые почты запрещены.' };
+      if (blockedLocalParts.has(local)) return { ok: false, reason: 'Слишком шаблонная почта, укажите реальную.' };
+      if (hasRepeatedChars(local)) return { ok: false, reason: 'Слишком много повторов в имени почты.' };
+      if (/\.\./.test(normalized) || /^\.|\.$/.test(local)) return { ok: false, reason: 'Некорректные точки в email.' };
+      if (!/[a-z]/i.test(local)) return { ok: false, reason: 'Имя почты выглядит подозрительно.' };
+      return { ok: true, value: normalized };
+    };
+
+    emailForm?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      emailStatus.className = 'mt-3 text-sm';
+
+      const checked = isLikelyRealEmail(emailInput.value);
+      if (!checked.ok) {
+        emailStatus.textContent = checked.reason;
+        emailStatus.classList.add('status-err');
+        return;
+      }
+
+      const stored = readStored();
+      if (stored.has(checked.value)) {
+        emailStatus.textContent = 'Эта почта уже подписана.';
+        emailStatus.classList.add('status-err');
+        return;
+      }
+
+      stored.add(checked.value);
+      saveStored(stored);
+      emailStatus.textContent = 'Готово! Почта подтверждена и добавлена в список.';
+      emailStatus.classList.add('status-ok');
+      emailForm.reset();
+    });
   </script>
 </body>
 </html>
